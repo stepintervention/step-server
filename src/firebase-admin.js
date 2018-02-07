@@ -30,6 +30,16 @@ var payload = {
 var options = {
 	priority: "high"
 }
+
+//bVdHT4CZIVft8biyWxzUujllsOi1
+
+var db = admin.database();
+var ref = db.ref("profile/bVdHT4CZIVft8biyWxzUujllsOi1");
+var msgsRef = ref.child("messages");
+var newMsgRef = msgsRef.push();
+newMsgRef.set({content:"123", uid:"bVdHT4CZIVft8biyWxzUujllsOi1"});
+
+
 /*
 // Send a message to the device corresponding to the provided
 // registration token.
