@@ -87,9 +87,10 @@ admin.messaging().sendToDevice(registrationToken, payload)
   			var stepArray = childData.steps;
   			var clearedStepArray = clearDuplicateSteps(stepArray);
   			db.ref("profile/" + id + "/steps").set(clearedStepArray); // not sure
+  			//db.ref("profile/" + id + "/finalized-steps").set(clearedStepArray);
 
   			var streakArray = splitStreaks(clearedStepArray);
-  			db.ref("profile/" + id + "/streaks").set(streakArray); // !!!! change to reservation of old data. not sure
+  			db.ref("profile/" + id + "/streaks").push(streakArray); // !!!! change to reservation of old data. not sure
   		});
   	}, function(error) {
   		console.log("error!: " + error.code);
@@ -106,7 +107,7 @@ admin.messaging().sendToDevice(registrationToken, payload)
   			var childData = childSnapshot.val();
   			var stepArray = childData.steps;
   			var userCluster = getUserCluster(stepArray);
-  			db.ref("profile/" + id + "/cluster").set(userCluster); // !!!! change to reservation of old data. not sure
+  			db.ref("profile/" + id + "/cluster").push(userCluster); // !!!! change to reservation of old data. not sure
   		}
   }
 
@@ -117,22 +118,132 @@ function findSameUserCluster(cluster) {
   		snapshot.forEach(function(childSnapshot) {
   			var id = childSnapshot.key;
   			var childData = childSnapshot.val();
-  			var userCluster = childData[childData.length - 1];
-  			if (isSameUserCluster (cluster, userCluster)) {
-  				userList.append(childSnapshot);
+  			var userClusters = childData.cluster;
+  			var recentCluster = userCluster[userClusters.length - 1];
+  			if (isSameUserCluster (cluster, recentCluster)) {
+  				userList.push(childSnapshot);
   			}
   		}
   	}
   	return userList;
 }
 
-function calculateAverage() {
-
+function findSameStreakCluster(clutser) {
+	var ref = db.ref("profile");
+  	var streakList = [];
+  	ref.once("value", function(snapshot) {
+  		snapshot.forEach(function(childSnapshot) {
+  			var id = childSnapshot.key;
+  			var childData = childSnapshot.val();
+  			var streakCluster = childData.streaks;
+  			var recentClusters = streakCluster[streakCluster.length - 1];
+  			var stepArray = childData.steps;
+  			var reversedArray = stepArray.reverse();
+  			recentClusters.forEach(function(streak) {
+  				if (streak.streakCluster == cluster) {
+  					// extract the step data
+  					var startIndex = streak.startIndex;
+  					var endIndex = streak.endIndex;
+  					var streakSteps = reversedArray.slice(startIndex, endIndex + 1);
+  					// get all streaks of the same cluster
+  					streakList.push(streakSteps);
+  				}
+  			});
+  		}
+  	}
+  	return streakList;
 }
 
-function getPercentile() {
+// same period, all average
+function calculateUserClusterAverage(clusterID, length) {
+	var users = findSameUserCluster(clusterID);
+	var steps = [];
+	users.forEach(function(user) {
+		var singleUserSteps = steps.slice(steps.length - length, steps.length);
+		steps.push(singleUserSteps);
+	});
+
+	var dailyAverage = [];
+	for (i=0; i<length; i++) {
+		var total = 0;
+		steps.forEach(function(user) {
+			total += user[i];
+	});
+		dailyAverage[i] = total / length;
+	}
 	
+	return dailyAverage;
 }
+
+function getStepPercentile(userID, userList, length) {
+	var stepsList;
+	userList.forEach(function(user) {
+		var singleUserSteps = steps.slice(steps.length - length, steps.length);
+		var singleUserSum = 0;
+		singleUserSteps.forEach(function(steps) {
+			singleUserSum += steps;
+		})
+		stepsList.push({uid: user.key, sum: singleUserSum}); // not sure
+	});
+
+	var orderIndex = 0;
+	stepsList.sort(compare);
+	stepsList.forEach(function(steps, index) {
+		if (userID == steps.uid) {
+			orderIndex = index;
+			break;
+		}
+	});
+
+	console.log("user index: " + orderIndex);
+
+	return orderIndex/(userList.length);
+}
+
+function compare(a,b) {
+  if (a.sum< b.sum) {
+    return -1;
+  }
+  if (a.sum > b.sum) {
+    return 1;
+  }
+  return 0;
+}
+
+function getStreakPercentile(streakID, streakArray) {
+	// cluster all streaks
+	var clusterArray = [];
+	var orderIndex = 0;
+	var orderedStreakArray = streakArray.sort(compareStreak);
+	streakArray.forEach(function(streak, index) {
+		if (streak.streakCluster == streakID) {
+			orderIndex = index;
+			break;
+		}
+	});
+
+	console.log("streak index: " + orderIndex);
+
+	return orderIndex/(streakArray.length);
+}
+
+function compareStreak(a,b) {
+  if (a.streakCluster< b.streakCluster) {
+    return -1;
+  }
+  if (a.streakCluster > b.streakCluster) {
+    return 1;
+  }
+  return 0;
+}
+
+function extractStreakData(startIndex, endIndex, array) {
+	var reversedArray = array.reverse();
+	var streakSteps = reversedArray.slice(startIndex, endIndex + 1);
+	var reversedStreakSteps = streakSteps.reverse();
+	return reversedStreakSteps;
+}
+
 
 /*
 function clearDuplicateSteps(stepArray) {
@@ -176,7 +287,8 @@ function getUserCluster(stepArray) {
   			var reversedStreakSteps = streakSteps.reverse();
   			var streakCluster = getStreakCluster(reversedStreakSteps);
 
-  			streakArray.append({
+  			// earlier is front
+  			streakArray.push({
 				// date (extract from original object)
 				startMonth: startMonth,
 				startDate : startDate,
